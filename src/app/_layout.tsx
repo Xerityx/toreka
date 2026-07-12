@@ -53,6 +53,7 @@ export default function RootLayout() {
             <Stack.Screen name="edit-sealed" options={{ presentation: 'modal', title: 'Sealed' }} />
             <Stack.Screen name="grade" options={{ presentation: 'modal', title: 'Grade a Card' }} />
             <Stack.Screen name="grade-report/[id]" options={{ title: 'Grade Report' }} />
+            <Stack.Screen name="trade" options={{ title: 'Trade Calculator' }} />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>

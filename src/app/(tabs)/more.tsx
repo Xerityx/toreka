@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
@@ -17,6 +18,7 @@ export default function MoreScreen() {
   return (
     <Screen title="More">
       <View style={{ paddingHorizontal: Spacing.three, gap: Spacing.three }}>
+        <ToolsSection />
         <CatalogSection />
         <ApiKeySection />
         <DataSection />
@@ -91,6 +93,28 @@ function CatalogSection() {
           {(update.error as Error).message}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+function ToolsSection() {
+  const theme = useTheme();
+  const router = useRouter();
+  return (
+    <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+      <ThemedText type="smallBold">Tools</ThemedText>
+      <ThemedText
+        type="linkPrimary"
+        style={{ color: theme.accent }}
+        onPress={() => router.push('/trade')}>
+        Trade calculator
+      </ThemedText>
+      <ThemedText
+        type="linkPrimary"
+        style={{ color: theme.accent }}
+        onPress={() => router.push('/grade')}>
+        Grade a card (no card link)
+      </ThemedText>
     </ThemedView>
   );
 }

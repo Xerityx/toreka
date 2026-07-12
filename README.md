@@ -1,56 +1,55 @@
-# Welcome to your Expo app 👋
+# Toreka トレカ
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A personal, best-in-class **Pokémon TCG collection tracker for iPhone** (English + Japanese cards) — built with Expo/React Native, compiled on GitHub Actions (no Mac needed), and sideloaded with SideStore using a free Apple ID.
 
-## Get started
+<p align="center"><img src="assets/images/icon.png" width="120" alt="Toreka icon"/></p>
 
-1. Install dependencies
+## Features
 
-   ```bash
-   npm install
-   ```
+- **Full collection tracking** — copies with condition, variant, graded slabs (PSA/BGS/CGC/TAG/SGC + cert), purchase price/date, storage location; sealed products with barcode entry; want lists.
+- **Offline card database** — 26,000+ cards (EN + JA), instant FTS search with typeahead (English prefix + Japanese trigram), set browsing with completion %.
+- **Live prices & portfolio** — TCGplayer per-variant prices + Cardmarket trend via pokemontcg.io (free), value-over-time charts, cost basis & gain/loss, most-valuable list, price alerts with local notifications.
+- **Card scanner** — photograph a card and it's identified on-device by perceptual-hash matching against the full catalog (no cloud, no fees); barcode scanning for sealed products.
+- **AI grade prediction (flagship)** — photograph front/back and get predicted grades for PSA, BGS, CGC and TAG with ranges, honest confidence levels, a component-by-component explanation (centering measured geometrically, corner/edge whitening detection, surface analysis), and a grading ROI calculator (expected value vs fees).
+- **Data freedom** — CSV import/export, one-tap database backup, everything stored locally in SQLite.
 
-2. Start the app
+## Architecture
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/app        Expo Router screens (5 native tabs + modals)
+src/db         SQLite layer: migrations, DAOs, FTS search (same SQL runs in app + tests)
+src/data       Price providers, catalog download, CSV, backup
+src/scanner    dHash perceptual hashing + matching (pure TS)
+src/grading    Metrics engine, per-company rulebook (data), explainer, ROI
+src/portfolio  Valuation, daily snapshots
+pipeline       Node scripts (Windows-friendly): build catalog.db + image hash index
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+The **catalog** (cards, sets, FTS index, image hashes) is built by `npm run pipeline:catalog` + `node pipeline/build-hashes.ts` and published as a GitHub Release asset; the app downloads it on first launch and can update it from More → Card database.
 
-### Other setup steps
+## Development
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm install
+npm run typecheck   # strict TS
+npm test            # 69 jest tests (DB, search, CSV, prices, scanner, grading)
+npm start           # Expo dev server (Expo Go covers everything except camera flows)
+```
 
-## Learn more
+## Building the IPA (no Mac)
 
-To learn more about developing your project with Expo, look at the following resources:
+Push a tag like `v1.0.0` (or run the **iOS Build** workflow manually) — a `macos-latest` runner produces an **unsigned** `Toreka.ipa` artifact. Install it with **SideStore** (one-time setup: [docs/SIDESTORE-SETUP.md](docs/SIDESTORE-SETUP.md)), which signs it on-device with your free Apple ID and auto-renews the 7-day signature.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Data sources & costs
 
-## Join the community
+| Source | Used for | Cost |
+|---|---|---|
+| [pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) | EN catalog | free |
+| [TCGdex](https://tcgdex.dev) | JA catalog | free |
+| [pokemontcg.io](https://pokemontcg.io) | prices (key raises limits) | free |
 
-Join our community of developers creating universal apps.
+Total running cost: **$0/month**. Card data & images © Nintendo/Creatures/GAME FREAK/TPCi — personal use only; this app is not distributed.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+---
+
+🤖 Built with [Claude Code](https://claude.com/claude-code)
