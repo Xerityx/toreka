@@ -83,8 +83,10 @@ export async function searchCards(db: SqlDb, opts: SearchOptions): Promise<CardS
       JOIN catalog.cards_fts f ON f.card_id = c.id
       WHERE f.cards_fts MATCH ?`;
     params.push(buildFtsQuery(q));
+    // bm25 weights per column (card_id, name, set_name, number): prioritize name hits.
+    sql += " AND rank MATCH 'bm25(0.0, 10.0, 2.0, 5.0)'";
     sql += filterClauses(opts, params);
-    sql += " ORDER BY f.rank LIMIT ?";
+    sql += " ORDER BY rank LIMIT ?";
     params.push(limit);
     push(await db.all<CardSummary>(sql, params));
 
