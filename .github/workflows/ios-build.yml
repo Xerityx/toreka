@@ -12,6 +12,10 @@ on:
   push:
     tags: ["v*"]
 
+# Needed so the tag build can attach Toreka.ipa to the GitHub Release.
+permissions:
+  contents: write
+
 concurrency:
   group: ios-build-${{ github.ref }}
   cancel-in-progress: true
