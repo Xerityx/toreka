@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
 import { Screen } from '@/components/screen';
@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
 import { downloadCatalog, fetchRemoteManifest } from '@/data/catalogDownload';
 import { getCatalogMeta } from '@/db/catalog';
+import { getSetting, setSetting, SETTING_KEYS } from '@/db/settings';
 import { useDb } from '@/hooks/use-db';
 import { useTheme } from '@/hooks/use-theme';
 import { useState } from 'react';
@@ -17,6 +18,7 @@ export default function MoreScreen() {
     <Screen title="More">
       <View style={{ paddingHorizontal: Spacing.three, gap: Spacing.three }}>
         <CatalogSection />
+        <ApiKeySection />
         <DataSection />
         <AboutSection />
       </View>
@@ -89,6 +91,54 @@ function CatalogSection() {
           {(update.error as Error).message}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+function ApiKeySection() {
+  const theme = useTheme();
+  const { data: handle } = useDb();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const { data: stored } = useQuery({
+    queryKey: ['setting', SETTING_KEYS.pokemonTcgIoApiKey],
+    queryFn: () => getSetting(handle!.db, SETTING_KEYS.pokemonTcgIoApiKey),
+    enabled: !!handle,
+  });
+
+  const value = draft ?? stored ?? '';
+
+  const save = useMutation({
+    mutationFn: () => setSetting(handle!.db, SETTING_KEYS.pokemonTcgIoApiKey, value.trim()),
+    onSuccess: () => setSaved(true),
+  });
+
+  return (
+    <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+      <ThemedText type="smallBold">pokemontcg.io API key</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Optional but recommended — raises the price-refresh rate limit. Free signup at
+        dev.pokemontcg.io.
+      </ThemedText>
+      <TextInput
+        value={value}
+        onChangeText={(t) => {
+          setDraft(t);
+          setSaved(false);
+        }}
+        placeholder="paste key here"
+        placeholderTextColor={theme.textSecondary}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={[
+          styles.input,
+          { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+        ]}
+      />
+      <ThemedText type="linkPrimary" style={{ color: theme.accent }} onPress={() => save.mutate()}>
+        {saved ? 'Saved ✓' : 'Save key'}
+      </ThemedText>
     </ThemedView>
   );
 }
@@ -179,5 +229,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: Spacing.three,
     gap: Spacing.two,
+  },
+  input: {
+    height: 40,
+    borderRadius: Radius.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.two,
+    fontSize: 14,
   },
 });

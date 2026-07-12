@@ -1,16 +1,35 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Spacing } from '@/constants/theme';
+import { TimeSeriesChart } from '@/components/time-series-chart';
+import { CARD_ASPECT, Radius, Spacing } from '@/constants/theme';
+import { downloadCatalog } from '@/data/catalogDownload';
+import { refreshPrices } from '@/data/priceRefresh';
 import { getCatalogMeta } from '@/db/catalog';
 import { getCollectionCounts } from '@/db/collection';
-import { downloadCatalog } from '@/data/catalogDownload';
+import { getSetting, SETTING_KEYS } from '@/db/settings';
+import {
+  computePortfolio,
+  getSnapshots,
+  writeDailySnapshotIfNeeded,
+  type TopItem,
+} from '@/portfolio/valuation';
 import { useDb } from '@/hooks/use-db';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -104,12 +123,27 @@ function HomeDashboard() {
   const theme = useTheme();
   const router = useRouter();
   const { data: handle } = useDb();
+  const queryClient = useQueryClient();
 
-  const { data: meta } = useQuery({
-    queryKey: ['catalogMeta'],
-    queryFn: () => getCatalogMeta(handle!.db),
-    enabled: !!handle?.hasCatalog,
-    staleTime: Infinity,
+  // Ensure a snapshot exists for today (cheap; no network).
+  useEffect(() => {
+    if (handle) {
+      writeDailySnapshotIfNeeded(handle.db).then((wrote) => {
+        if (wrote) queryClient.invalidateQueries({ queryKey: ['snapshots'] });
+      });
+    }
+  }, [handle, queryClient]);
+
+  const { data: portfolio } = useQuery({
+    queryKey: ['portfolio'],
+    queryFn: () => computePortfolio(handle!.db),
+    enabled: !!handle,
+  });
+
+  const { data: snapshots } = useQuery({
+    queryKey: ['snapshots'],
+    queryFn: () => getSnapshots(handle!.db, 90),
+    enabled: !!handle,
   });
 
   const { data: counts } = useQuery({
@@ -118,33 +152,181 @@ function HomeDashboard() {
     enabled: !!handle,
   });
 
+  const { data: lastRefresh } = useQuery({
+    queryKey: ['lastPriceRefresh'],
+    queryFn: () => getSetting(handle!.db, SETTING_KEYS.lastPriceRefresh),
+    enabled: !!handle,
+  });
+
+  const { data: meta } = useQuery({
+    queryKey: ['catalogMeta'],
+    queryFn: () => getCatalogMeta(handle!.db),
+    enabled: !!handle?.hasCatalog,
+    staleTime: Infinity,
+  });
+
+  const refresh = useMutation({
+    mutationFn: async () => {
+      const result = await refreshPrices(handle!.db);
+      const { notifyTriggeredAlerts } = await import('@/data/notify');
+      await notifyTriggeredAlerts(result.triggeredAlerts);
+      return result;
+    },
+    onSuccess: () => {
+      if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries();
+    },
+  });
+
+  const totalWithSealed = (portfolio?.totalValue ?? 0) + (portfolio?.sealedValue ?? 0);
+  const costWithSealed = (portfolio?.costBasis ?? 0) + (portfolio?.sealedCost ?? 0);
+  const gain = totalWithSealed - costWithSealed;
+  const gainPct = costWithSealed > 0 ? (gain / costWithSealed) * 100 : null;
+
   return (
     <Screen title="Toreka">
-      <View style={{ paddingHorizontal: Spacing.three, gap: Spacing.three }}>
+      <ScrollView
+        contentContainerStyle={styles.dashboard}
+        refreshControl={
+          <RefreshControl
+            refreshing={refresh.isPending}
+            onRefresh={() => refresh.mutate()}
+            tintColor={theme.accent}
+          />
+        }>
+        {/* Hero: portfolio value */}
         <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
           <ThemedText type="small" themeColor="textSecondary">
-            Collection
+            Portfolio value
           </ThemedText>
-          <ThemedText type="subtitle">{counts?.totalCards ?? 0} cards</ThemedText>
+          <ThemedText type="title" style={styles.heroValue}>
+            ${totalWithSealed.toFixed(2)}
+          </ThemedText>
+          {costWithSealed > 0 ? (
+            <ThemedText
+              type="smallBold"
+              style={{ color: gain >= 0 ? theme.positive : theme.negative }}>
+              {gain >= 0 ? '▲' : '▼'} ${Math.abs(gain).toFixed(2)}
+              {gainPct != null ? ` (${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%)` : ''} vs cost
+            </ThemedText>
+          ) : null}
           <ThemedText type="small" themeColor="textSecondary">
-            {counts?.distinctCards ?? 0} unique · {counts?.gradedCards ?? 0} graded
+            {counts?.totalCards ?? 0} cards · {counts?.gradedCards ?? 0} graded
+            {portfolio?.sealedValue ? ` · sealed $${portfolio.sealedValue.toFixed(0)}` : ''}
+            {portfolio && portfolio.unpricedCount > 0
+              ? ` · ${portfolio.unpricedCount} unpriced`
+              : ''}
           </ThemedText>
         </ThemedView>
 
-        <View style={styles.rowGap}>
-          <QuickAction label="Search cards" onPress={() => router.push('/search')} />
-          <QuickAction label="My collection" onPress={() => router.push('/collection')} />
-        </View>
+        {/* Value over time */}
+        <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold">Value over time</ThemedText>
+          <TimeSeriesChart
+            points={(snapshots ?? []).map((s) => ({ date: s.date, value: s.totalValue }))}
+          />
+        </ThemedView>
+
+        {/* Refresh prices */}
+        <Pressable
+          onPress={() => refresh.mutate()}
+          disabled={refresh.isPending}
+          style={({ pressed }) => [
+            styles.button,
+            { backgroundColor: theme.accent },
+            (pressed || refresh.isPending) && { opacity: 0.7 },
+          ]}>
+          <ThemedText type="smallBold" style={{ color: '#14100A' }}>
+            {refresh.isPending ? 'Refreshing prices…' : 'Refresh prices'}
+          </ThemedText>
+        </Pressable>
+        {refresh.isError ? (
+          <ThemedText type="small" style={{ color: theme.negative }}>
+            {(refresh.error as Error).message}
+          </ThemedText>
+        ) : null}
+        <ThemedText type="small" themeColor="textSecondary">
+          {lastRefresh
+            ? `Prices updated ${new Date(lastRefresh).toLocaleString()}`
+            : 'Prices update for owned + wishlisted cards. Pull down or tap refresh.'}
+        </ThemedText>
+
+        {/* Language breakdown */}
+        {portfolio && (portfolio.byLanguage.en > 0 || portfolio.byLanguage.ja > 0) ? (
+          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+            <ThemedText type="smallBold">By language</ThemedText>
+            <BreakdownRow label="English" value={portfolio.byLanguage.en} total={portfolio.totalValue} />
+            <BreakdownRow label="日本語" value={portfolio.byLanguage.ja} total={portfolio.totalValue} />
+          </ThemedView>
+        ) : null}
+
+        {/* Most valuable */}
+        {portfolio && portfolio.topItems.length > 0 ? (
+          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+            <ThemedText type="smallBold">Most valuable</ThemedText>
+            {portfolio.topItems.map((item) => (
+              <TopItemRow key={`${item.cardId}-${item.gradeLabel ?? 'raw'}-${item.unitValue}`} item={item} />
+            ))}
+          </ThemedView>
+        ) : null}
+
+        {/* Empty-collection guidance */}
+        {counts && counts.totalCards === 0 ? (
+          <View style={styles.rowGap}>
+            <QuickAction label="Search cards" onPress={() => router.push('/search')} />
+            <QuickAction label="My collection" onPress={() => router.push('/collection')} />
+          </View>
+        ) : null}
 
         <ThemedText type="small" themeColor="textSecondary">
           Catalog v{meta?.version ?? '—'} · {meta?.cardCount.toLocaleString() ?? '…'} cards ·{' '}
           {meta?.setCount ?? '…'} sets
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Portfolio value tracking arrives with price refresh — coming next.
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function BreakdownRow({ label, value, total }: { label: string; value: number; total: number }) {
+  return (
+    <View style={styles.breakdownRow}>
+      <ThemedText type="small" style={{ width: 76 }}>
+        {label}
+      </ThemedText>
+      <View style={{ flex: 1 }}>
+        <ProgressBar fraction={total > 0 ? value / total : 0} height={5} />
+      </View>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.breakdownValue}>
+        ${value.toFixed(0)}
+      </ThemedText>
+    </View>
+  );
+}
+
+function TopItemRow({ item }: { item: TopItem }) {
+  const theme = useTheme();
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.push({ pathname: '/card/[id]', params: { id: item.cardId } })}
+      style={({ pressed }) => [styles.topRow, pressed && { opacity: 0.7 }]}>
+      <View style={[styles.topThumb, { backgroundColor: theme.imageBg }]}>
+        {item.imageSmall ? (
+          <Image source={item.imageSmall} style={{ flex: 1 }} contentFit="contain" />
+        ) : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <ThemedText type="small" numberOfLines={1}>
+          {item.quantity > 1 ? `${item.quantity}× ` : ''}
+          {item.name}
+          {item.gradeLabel ? `  ·  ${item.gradeLabel}` : ''}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          {item.setName}
         </ThemedText>
       </View>
-    </Screen>
+      <ThemedText type="smallBold">${item.totalValue.toFixed(2)}</ThemedText>
+    </Pressable>
   );
 }
 
@@ -173,6 +355,11 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     paddingHorizontal: Spacing.four,
   },
+  dashboard: {
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.three,
+    paddingBottom: Spacing.six,
+  },
   card: {
     width: '100%',
     borderRadius: Radius.lg,
@@ -180,11 +367,36 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.one,
   },
+  heroValue: {
+    fontSize: 40,
+    lineHeight: 46,
+  },
   button: {
-    marginTop: Spacing.two,
     alignItems: 'center',
-    paddingVertical: Spacing.two + 2,
+    paddingVertical: Spacing.three,
     borderRadius: Radius.md,
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: 2,
+  },
+  breakdownValue: {
+    minWidth: 56,
+    textAlign: 'right',
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  topThumb: {
+    height: 40,
+    width: 40 * CARD_ASPECT,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   rowGap: { flexDirection: 'row', gap: Spacing.two },
   quickAction: {

@@ -20,6 +20,8 @@ export const Colors = {
     negative: '#DC2626',
     border: 'rgba(16, 24, 40, 0.10)',
     imageBg: '#EAEEF3',
+    /** Chart series color — validated ≥3:1 vs light surface (dataviz). */
+    chartLine: '#A87C1D',
   },
   dark: {
     text: '#F2F4F8',
@@ -33,6 +35,8 @@ export const Colors = {
     negative: '#F87171',
     border: 'rgba(255, 255, 255, 0.09)',
     imageBg: '#10141A',
+    /** Chart series color — validated lightness band + contrast on dark surface (dataviz). */
+    chartLine: '#B8841F',
   },
 } as const;
 
