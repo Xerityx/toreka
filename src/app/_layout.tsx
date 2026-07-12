@@ -51,6 +51,8 @@ export default function RootLayout() {
             <Stack.Screen name="set/[id]" options={{ title: '' }} />
             <Stack.Screen name="edit-copy" options={{ presentation: 'modal', title: 'Edit' }} />
             <Stack.Screen name="edit-sealed" options={{ presentation: 'modal', title: 'Sealed' }} />
+            <Stack.Screen name="grade" options={{ presentation: 'modal', title: 'Grade a Card' }} />
+            <Stack.Screen name="grade-report/[id]" options={{ title: 'Grade Report' }} />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>

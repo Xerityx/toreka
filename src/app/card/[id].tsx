@@ -12,6 +12,7 @@ import { TimeSeriesChart } from '@/components/time-series-chart';
 import { CARD_ASPECT, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { createAlert, deleteAlert, getAlertsForCard } from '@/db/alerts';
 import { getCard } from '@/db/catalog';
+import { listGradingReportsForCard } from '@/db/grading';
 import { deleteCollectionItem, getItemsForCard, updateCollectionItem } from '@/db/collection';
 import { getPriceHistory, getPricesForCard } from '@/db/prices';
 import type { CollectionItem } from '@/db/types';
@@ -120,6 +121,24 @@ export default function CardDetailScreen() {
           </ThemedText>
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push({ pathname: '/grade', params: { cardId: id! } })}
+          style={({ pressed }) => [
+            styles.addButton,
+            {
+              backgroundColor: 'transparent',
+              borderColor: theme.accent,
+              borderWidth: StyleSheet.hairlineWidth * 2,
+            },
+            pressed && { opacity: 0.75 },
+          ]}>
+          <ThemedText type="smallBold" style={{ color: theme.accent }}>
+            Predict grade  ✦
+          </ThemedText>
+        </Pressable>
+
+        <GradeHistorySection cardId={id!} />
+
         {copies && copies.length > 0 ? (
           <View style={styles.section}>
             <ThemedText type="smallBold">Your copies</ThemedText>
@@ -144,6 +163,45 @@ const VARIANT_NAMES: Record<string, string> = {
   firstEditionHolofoil: '1st Ed. Holo',
   unlimited: 'Unlimited',
 };
+
+function GradeHistorySection({ cardId }: { cardId: string }) {
+  const theme = useTheme();
+  const router = useRouter();
+  const { data: handle } = useDb();
+
+  const { data: reports } = useQuery({
+    queryKey: ['gradingReports', 'card', cardId],
+    queryFn: () => listGradingReportsForCard(handle!.db, cardId),
+    enabled: !!handle,
+  });
+
+  if (!reports || reports.length === 0) return null;
+  return (
+    <View style={styles.section}>
+      <ThemedText type="smallBold">Grade predictions</ThemedText>
+      {reports.map((r) => {
+        const psa = r.predictions.find((p) => p.company === 'PSA');
+        return (
+          <Pressable
+            key={r.id}
+            onPress={() => router.push({ pathname: '/grade-report/[id]', params: { id: String(r.id) } })}
+            style={({ pressed }) => [
+              styles.priceRow,
+              { borderColor: theme.border },
+              pressed && { backgroundColor: theme.backgroundSelected },
+            ]}>
+            <ThemedText type="small" style={{ flex: 1 }}>
+              {new Date(r.createdAt).toLocaleDateString()}
+            </ThemedText>
+            <ThemedText type="smallBold" style={{ color: theme.accent }}>
+              PSA {psa?.mostLikely ?? '—'} est.
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 function PricesSection({ cardId }: { cardId: string }) {
   const theme = useTheme();
