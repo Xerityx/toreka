@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { ProgressBar } from '@/components/progress-bar';
 import { Screen } from '@/components/screen';
@@ -17,13 +17,18 @@ import { useState } from 'react';
 export default function MoreScreen() {
   return (
     <Screen title="More">
-      <View style={{ paddingHorizontal: Spacing.three, gap: Spacing.three }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: Spacing.three,
+          gap: Spacing.three,
+          paddingBottom: Spacing.six,
+        }}>
         <ToolsSection />
         <CatalogSection />
         <ApiKeySection />
         <DataSection />
         <AboutSection />
-      </View>
+      </ScrollView>
     </Screen>
   );
 }

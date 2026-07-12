@@ -66,14 +66,15 @@ function CatalogOnboarding() {
       await downloadCatalog((f) => setProgress(f));
       await queryClient.invalidateQueries();
     } catch (e) {
-      setError((e as Error).message);
+      const msg = (e as Error).message;
+      setError(msg.length > 200 ? `${msg.slice(0, 200)}…` : msg);
       setProgress(null);
     }
   }, [queryClient]);
 
   return (
     <Screen>
-      <View style={styles.onboarding}>
+      <ScrollView contentContainerStyle={styles.onboarding}>
         <ThemedText type="title" themeColor="accent">
           Toreka
         </ThemedText>
@@ -114,7 +115,7 @@ function CatalogOnboarding() {
             </ThemedText>
           ) : null}
         </ThemedView>
-      </View>
+      </ScrollView>
     </Screen>
   );
 }
@@ -349,11 +350,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerText: { textAlign: 'center' },
   onboarding: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.four,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.five,
   },
   dashboard: {
     paddingHorizontal: Spacing.three,

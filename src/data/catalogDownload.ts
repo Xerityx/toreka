@@ -1,7 +1,7 @@
-import * as LegacyFS from "expo-file-system/legacy";
+import { File, Paths } from "expo-file-system";
 
 import { CATALOG_DB_URL, CATALOG_MANIFEST_URL } from "./config";
-import { catalogFile, refreshCatalogAttachment } from "../db/client";
+import { catalogFile, getDb, refreshCatalogAttachment } from "../db/client";
 
 export interface CatalogManifest {
   version: string;
@@ -23,32 +23,53 @@ export async function fetchRemoteManifest(): Promise<CatalogManifest | null> {
 
 /**
  * Download catalog.db to a temp file, then swap it into place and re-attach.
- * onProgress receives 0..1 (best-effort; -1 when total size unknown).
+ * onProgress receives 0..1 when the size is known, -1 otherwise.
  */
 export async function downloadCatalog(
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
-  const tmpUri = `${LegacyFS.cacheDirectory}catalog-download.db`;
-  const task = LegacyFS.createDownloadResumable(CATALOG_DB_URL, tmpUri, {}, (p) => {
-    if (!onProgress) return;
-    const total = p.totalBytesExpectedToWrite;
-    onProgress(total > 0 ? p.totalBytesWritten / total : -1);
-  });
+  onProgress?.(-1);
 
-  const result = await task.downloadAsync();
-  if (!result || (result.status !== 200 && result.status !== 0)) {
-    throw new Error(`Catalog download failed (HTTP ${result?.status ?? "?"})`);
+  // Clean slate: iOS refuses to move a download onto an existing file.
+  const tmp = new File(Paths.cache, "catalog-download.db");
+  try {
+    if (tmp.exists) tmp.delete();
+  } catch {
+    // stale handle — continue; downloadFileAsync will error if truly blocked
   }
 
-  const target = catalogFile();
-  // Detach before overwriting so SQLite doesn't hold the old file open.
+  let downloaded: File;
   try {
-    const { getDb } = await import("../db/client");
+    downloaded = await File.downloadFileAsync(CATALOG_DB_URL, tmp);
+  } catch (e) {
+    throw new Error(`Download failed: ${shortMessage(e)}`);
+  }
+
+  onProgress?.(0.9);
+
+  // Detach the old catalog before overwriting it.
+  try {
     const { db } = await getDb();
     await db.run("DETACH DATABASE catalog");
   } catch {
     // not attached yet — fine
   }
-  await LegacyFS.moveAsync({ from: tmpUri, to: target.uri });
+
+  const target = catalogFile();
+  try {
+    if (target.exists) target.delete();
+    downloaded.move(target);
+  } catch (e) {
+    throw new Error(`Could not save catalog: ${shortMessage(e)}`);
+  }
+
   await refreshCatalogAttachment();
+  onProgress?.(1);
+}
+
+/** Keep iOS's novel-length NSError descriptions out of the UI. */
+function shortMessage(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const firstLine = msg.split("\n")[0];
+  return firstLine.length > 160 ? `${firstLine.slice(0, 160)}…` : firstLine;
 }
