@@ -49,6 +49,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="card/[id]" options={{ title: '' }} />
             <Stack.Screen name="set/[id]" options={{ title: '' }} />
+            <Stack.Screen name="edit-copy" options={{ presentation: 'modal', title: 'Edit' }} />
+            <Stack.Screen name="edit-sealed" options={{ presentation: 'modal', title: 'Sealed' }} />
           </Stack>
         </ThemeProvider>
       </QueryClientProvider>

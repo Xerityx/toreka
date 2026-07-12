@@ -17,6 +17,7 @@ export default function MoreScreen() {
     <Screen title="More">
       <View style={{ paddingHorizontal: Spacing.three, gap: Spacing.three }}>
         <CatalogSection />
+        <DataSection />
         <AboutSection />
       </View>
     </Screen>
@@ -86,6 +87,72 @@ function CatalogSection() {
       {update.isError ? (
         <ThemedText type="small" style={{ color: theme.negative }}>
           {(update.error as Error).message}
+        </ThemedText>
+      ) : null}
+    </ThemedView>
+  );
+}
+
+function DataSection() {
+  const theme = useTheme();
+  const { data: handle } = useDb();
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState<string | null>(null);
+
+  const run = async (fn: () => Promise<string>) => {
+    try {
+      setStatus(null);
+      setStatus(await fn());
+    } catch (e) {
+      setStatus(`Failed: ${(e as Error).message}`);
+    }
+  };
+
+  return (
+    <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
+      <ThemedText type="smallBold">Your data</ThemedText>
+      <ThemedText
+        type="linkPrimary"
+        style={{ color: theme.accent }}
+        onPress={() =>
+          run(async () => {
+            const { exportCollectionCsvFile } = await import('@/data/backup');
+            const n = await exportCollectionCsvFile(handle!.db);
+            return `Exported ${n} entries.`;
+          })
+        }>
+        Export collection as CSV
+      </ThemedText>
+      <ThemedText
+        type="linkPrimary"
+        style={{ color: theme.accent }}
+        onPress={() =>
+          run(async () => {
+            const { importCollectionCsvFile } = await import('@/data/backup');
+            const report = await importCollectionCsvFile(handle!.db);
+            if (!report) return 'Import cancelled.';
+            await queryClient.invalidateQueries();
+            const skipped = report.skipped.length > 0 ? ` (${report.skipped.length} skipped)` : '';
+            return `Imported ${report.imported} entries${skipped}.`;
+          })
+        }>
+        Import collection from CSV
+      </ThemedText>
+      <ThemedText
+        type="linkPrimary"
+        style={{ color: theme.accent }}
+        onPress={() =>
+          run(async () => {
+            const { backupUserDatabase } = await import('@/data/backup');
+            await backupUserDatabase(handle!.db);
+            return 'Backup shared.';
+          })
+        }>
+        Back up database
+      </ThemedText>
+      {status ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {status}
         </ThemedText>
       ) : null}
     </ThemedView>

@@ -1,21 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CARD_ASPECT, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { getCard } from '@/db/catalog';
-import { addCollectionItem, deleteCollectionItem, getItemsForCard, updateCollectionItem } from '@/db/collection';
+import { deleteCollectionItem, getItemsForCard, updateCollectionItem } from '@/db/collection';
 import type { CollectionItem } from '@/db/types';
+import { isWanted, toggleWant } from '@/db/wantlist';
 import { useDb } from '@/hooks/use-db';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function CardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const router = useRouter();
   const { data: handle } = useDb();
   const queryClient = useQueryClient();
 
@@ -31,21 +33,22 @@ export default function CardDetailScreen() {
     enabled: !!handle && !!id,
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['copies', id] });
-    queryClient.invalidateQueries({ queryKey: ['card', id] });
-    queryClient.invalidateQueries({ queryKey: ['collection'] });
-    queryClient.invalidateQueries({ queryKey: ['collectionCounts'] });
-    queryClient.invalidateQueries({ queryKey: ['search'] });
-    queryClient.invalidateQueries({ queryKey: ['sets'] });
-    queryClient.invalidateQueries({ queryKey: ['setCards'] });
-  };
+  const { data: wanted } = useQuery({
+    queryKey: ['wanted', id],
+    queryFn: () => isWanted(handle!.db, id!),
+    enabled: !!handle && !!id,
+  });
 
-  const addCopy = useMutation({
-    mutationFn: () =>
-      addCollectionItem(handle!.db, { cardId: id!, language: card?.language ?? 'en' }),
-    onSuccess: () => {
-      if (Platform.OS === 'ios') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const invalidate = () => queryClient.invalidateQueries();
+
+  const want = useMutation({
+    mutationFn: () => toggleWant(handle!.db, id!),
+    onSuccess: (nowWanted) => {
+      if (Platform.OS === 'ios') {
+        Haptics.impactAsync(
+          nowWanted ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light,
+        );
+      }
       invalidate();
     },
   });
@@ -60,7 +63,18 @@ export default function CardDetailScreen() {
 
   return (
     <ThemedView style={styles.root}>
-      <Stack.Screen options={{ title: card.name }} />
+      <Stack.Screen
+        options={{
+          title: card.name,
+          headerRight: () => (
+            <Pressable onPress={() => want.mutate()} hitSlop={10}>
+              <ThemedText type="subtitle" style={{ color: theme.accent, lineHeight: 30 }}>
+                {wanted ? '♥' : '♡'}
+              </ThemedText>
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={[styles.imageWrap, { backgroundColor: theme.imageBg }]}>
           {card.imageLarge || card.imageSmall ? (
@@ -90,12 +104,11 @@ export default function CardDetailScreen() {
         </View>
 
         <Pressable
-          onPress={() => addCopy.mutate()}
-          disabled={addCopy.isPending}
+          onPress={() => router.push({ pathname: '/edit-copy', params: { cardId: id! } })}
           style={({ pressed }) => [
             styles.addButton,
             { backgroundColor: theme.accent },
-            (pressed || addCopy.isPending) && { opacity: 0.75 },
+            pressed && { opacity: 0.75 },
           ]}>
           <ThemedText type="smallBold" style={{ color: '#14100A' }}>
             {card.ownedQuantity > 0 ? 'Add another copy' : 'Add to collection'}
@@ -106,7 +119,7 @@ export default function CardDetailScreen() {
           <View style={styles.section}>
             <ThemedText type="smallBold">Your copies</ThemedText>
             {copies.map((copy) => (
-              <CopyRow key={copy.id} copy={copy} cardId={id!} onChanged={invalidate} />
+              <CopyRow key={copy.id} copy={copy} onChanged={invalidate} />
             ))}
           </View>
         ) : null}
@@ -122,17 +135,9 @@ export default function CardDetailScreen() {
   );
 }
 
-function CopyRow({
-  copy,
-  cardId,
-  onChanged,
-}: {
-  copy: CollectionItem;
-  cardId: string;
-  onChanged: () => void;
-}) {
-  void cardId;
+function CopyRow({ copy, onChanged }: { copy: CollectionItem; onChanged: () => void }) {
   const theme = useTheme();
+  const router = useRouter();
   const { data: handle } = useDb();
 
   const bump = useMutation({
@@ -144,7 +149,13 @@ function CopyRow({
   });
 
   return (
-    <View style={[styles.copyRow, { borderColor: theme.border }]}>
+    <Pressable
+      onPress={() => router.push({ pathname: '/edit-copy', params: { copyId: String(copy.id) } })}
+      style={({ pressed }) => [
+        styles.copyRow,
+        { borderColor: theme.border },
+        pressed && { backgroundColor: theme.backgroundSelected },
+      ]}>
       <View style={{ flex: 1 }}>
         <ThemedText type="small">
           {copy.isGraded
@@ -170,7 +181,7 @@ function CopyRow({
           </ThemedText>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
