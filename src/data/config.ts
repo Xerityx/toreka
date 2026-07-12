@@ -7,7 +7,7 @@
  * directory serving those two files (e.g. `npx serve pipeline/out`).
  */
 
-export const GITHUB_REPO = "xerityx/toreka";
+export const GITHUB_REPO = "Xerityx/toreka";
 
 const RELEASE_BASE = `https://github.com/${GITHUB_REPO}/releases/latest/download`;
 

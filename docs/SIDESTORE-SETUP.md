@@ -37,7 +37,7 @@ Apple lets any Apple ID sign apps for personal development use (valid 7 days, ma
 
 ## Part 3 — Installing Toreka (every build)
 
-1. On the iPhone, open **github.com/<your-username>/toreka/releases** (or the Actions artifact link) in Safari and download `Toreka.ipa`.
+1. On the iPhone, open **https://github.com/Xerityx/toreka/releases** in Safari and download `Toreka.ipa` from the latest release.
 2. Open **SideStore** → **My Apps** → **+** → choose the downloaded `Toreka.ipa` from Files.
 3. Wait ~30 seconds. Toreka appears on your home screen. Done.
 
