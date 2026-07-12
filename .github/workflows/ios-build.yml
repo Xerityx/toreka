@@ -1,0 +1,76 @@
+# Builds an UNSIGNED iOS .ipa on a macOS runner.
+# SideStore re-signs it on-device with a free Apple ID, so no certificates,
+# provisioning profiles, or Apple Developer account are needed here.
+#
+# Trigger: manually (workflow_dispatch) or by pushing a tag like v1.0.0.
+# Output: Toreka.ipa as a workflow artifact; tag builds also attach it to a GitHub Release.
+
+name: iOS Build (unsigned IPA)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild (generate ios/ project)
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/Toreka.xcworkspace \
+            -scheme Toreka \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcbeautify --renderer github-actions
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          echo "Found app bundle: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry Toreka.ipa Payload
+          ls -lh Toreka.ipa
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Toreka-ipa
+          path: Toreka.ipa
+          retention-days: 30
+
+      - name: Attach to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Toreka.ipa
+          generate_release_notes: true
